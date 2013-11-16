@@ -1626,24 +1626,25 @@ OMX_ERRORTYPE  omx_video::get_parameter(OMX_IN OMX_HANDLETYPE     hComp,
       if(portFmt->nPortIndex == (OMX_U32) PORT_INDEX_IN)
       {
           int index = portFmt->nIndex;
+          //we support following formats
+          //index 0 - YUV420SP32m
+          //index 1 - opaque which internally maps to YUV420SP.
+          //index 2 - YUV420SP
+          //this can be extended in the future
+          int supportedFormats[] = {
+              [0] = QOMX_COLOR_FORMATYUV420PackedSemiPlanar32m,
+              [1] = QOMX_COLOR_FormatAndroidOpaque,
+              [2] = OMX_COLOR_FormatYUV420SemiPlanar,
+          };
 
-          if (index > 1) {
+          if (index > sizeof(supportedFormats)/sizeof(*supportedFormats)) {
               eRet = OMX_ErrorNoMore;
           } else {
               memcpy(portFmt, &m_sInPortFormat, sizeof(m_sInPortFormat));
-#ifdef _ANDROID_ICS_
-              if (index == 1) {
-                  //we support two formats
-                  //index 0 - YUV420SP
-                  //index 1 - opaque which internally maps to YUV420SP.
-                  //this can be extended in the future
-                  portFmt->nIndex = index; //restore index set from client
-                  portFmt->eColorFormat =
-                    (OMX_COLOR_FORMATTYPE)QOMX_COLOR_FormatAndroidOpaque;
-                  DEBUG_PRINT_HIGH("get_parameter: QOMX_COLOR_FormatAndroidOpaque");
-              }
+              portFmt->nIndex = index; //restore index set from client
+              portFmt->eColorFormat =
+                (OMX_COLOR_FORMATTYPE)supportedFormats[index];
           }
-#endif
       }
       else if(portFmt->nPortIndex == (OMX_U32) PORT_INDEX_OUT)
       {
@@ -3576,7 +3577,7 @@ OMX_ERRORTYPE  omx_video::empty_this_buffer_proxy(OMX_IN OMX_HANDLETYPE         
             buffer->nFilledLen);
     DEBUG_PRINT_LOW("memcpy() done in ETBProxy for i/p Heap UseBuf");
   } else if (m_sInPortDef.format.video.eColorFormat ==
-      OMX_COLOR_FormatYUV420SemiPlanar && !mUseProxyColorFormat) {
+      OMX_COLOR_FormatYUV420SemiPlanar) {
       //For the case where YUV420SP buffers are qeueued to component
       //by sources other than camera (Apps via MediaCodec), alignment
       //of chroma-plane to 2K is necessary.
@@ -4196,7 +4197,7 @@ OMX_ERRORTYPE omx_video::empty_buffer_done(OMX_HANDLETYPE         hComp,
   pending_input_buffers--;
 
   if(mUseProxyColorFormat && (buffer_index < m_sInPortDef.nBufferCountActual)) {
-    if(!pdest_frame) {
+    if(!pdest_frame && !input_flush_progress) {
       pdest_frame = buffer;
       DEBUG_PRINT_LOW("\n empty_buffer_done pdest_frame address is %p",pdest_frame);
       return push_input_buffer(hComp);
@@ -4439,6 +4440,7 @@ OMX_ERRORTYPE omx_video::get_supported_profile_level(OMX_VIDEO_PARAM_PROFILELEVE
                     profileLevelType->eProfile,profileLevelType->eLevel);
   return eRet;
 }
+#endif
 
 #ifdef USE_ION
 int omx_video::alloc_map_ion_memory(int size,struct ion_allocation_data *alloc_data,
@@ -4532,7 +4534,6 @@ void omx_video::free_ion_memory(struct venc_ion *buf_ion_info)
      buf_ion_info->fd_ion_data.fd = -1;
      pthread_mutex_unlock(&m_venc_ionlock);
 }
-#endif
 #endif
 #ifdef _ANDROID_ICS_
 void omx_video::omx_release_meta_buffer(OMX_BUFFERHEADERTYPE *buffer)
